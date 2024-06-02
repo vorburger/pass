@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (C) 2012 - 2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+# Copyright (C) 2012 - 2024 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 # This file is licensed under the GPLv2+. Please see COPYING for more information.
 
 umask "${PASSWORD_STORE_UMASK:-077}"
@@ -59,7 +59,7 @@ die() {
 verify_file() {
 	[[ -n $PASSWORD_STORE_SIGNING_KEY ]] || return 0
 	[[ -f $1.sig ]] || die "Signature for $1 does not exist."
-	local fingerprints="$($GPG $PASSWORD_STORE_GPG_OPTS --verify --status-fd=1 "$1.sig" "$1" 2>/dev/null | sed -n 's/^\[GNUPG:\] VALIDSIG \([A-F0-9]\{40\}\) .* \([A-F0-9]\{40\}\)$/\1\n\2/p')"
+	local fingerprints="$($GPG "$PASSWORD_STORE_GPG_OPTS" --verify --status-fd=1 "$1.sig" "$1" 2>/dev/null | sed -n 's/^\[GNUPG:\] VALIDSIG \([A-F0-9]\{40\}\) .* \([A-F0-9]\{40\}\)$/\1\n\2/p')"
 	local fingerprint found=0
 	for fingerprint in $PASSWORD_STORE_SIGNING_KEY; do
 		[[ $fingerprint =~ ^[A-F0-9]{40}$ ]] || continue
@@ -109,13 +109,13 @@ set_gpg_recipients() {
 
 reencrypt_path() {
 	local prev_gpg_recipients="" gpg_keys="" current_keys="" index passfile
-	local groups="$($GPG $PASSWORD_STORE_GPG_OPTS --list-config --with-colons | grep "^cfg:group:.*")"
+	local groups="$($GPG "$PASSWORD_STORE_GPG_OPTS" --list-config --with-colons | grep "^cfg:group:.*")"
 	while read -r -d "" passfile; do
 		[[ -L $passfile ]] && continue
 		local passfile_dir="${passfile%/*}"
-		passfile_dir="${passfile_dir#$PREFIX}"
+		passfile_dir="${passfile_dir#"$PREFIX"}"
 		passfile_dir="${passfile_dir#/}"
-		local passfile_display="${passfile#$PREFIX/}"
+		local passfile_display="${passfile#"$PREFIX"/}"
 		passfile_display="${passfile_display%.gpg}"
 		local passfile_temp="${passfile}.tmp.${RANDOM}.${RANDOM}.${RANDOM}.${RANDOM}.--"
 
@@ -127,9 +127,9 @@ reencrypt_path() {
 				IFS=";" eval 'GPG_RECIPIENTS+=( $group )' # http://unix.stackexchange.com/a/92190
 				unset "GPG_RECIPIENTS[$index]"
 			done
-			gpg_keys="$($GPG $PASSWORD_STORE_GPG_OPTS --list-keys --with-colons "${GPG_RECIPIENTS[@]}" | sed -n 's/^sub:[^idr:]*:[^:]*:[^:]*:\([^:]*\):[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[a-zA-Z]*e[a-zA-Z]*:.*/\1/p' | LC_ALL=C sort -u)"
+			gpg_keys="$($GPG "$PASSWORD_STORE_GPG_OPTS" --list-keys --with-colons "${GPG_RECIPIENTS[@]}" | sed -n 's/^sub:[^idr:]*:[^:]*:[^:]*:\([^:]*\):[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[a-zA-Z]*e[a-zA-Z]*:.*/\1/p' | LC_ALL=C sort -u)"
 		fi
-		current_keys="$(LC_ALL=C $GPG $PASSWORD_STORE_GPG_OPTS -v --no-secmem-warning --no-permission-warning --decrypt --list-only --keyid-format long "$passfile" 2>&1 | sed -nE 's/^gpg: public key is ([A-F0-9]+)$/\1/p' | LC_ALL=C sort -u)"
+		current_keys="$(LC_ALL=C $GPG "$PASSWORD_STORE_GPG_OPTS" -v --no-secmem-warning --no-permission-warning --decrypt --list-only --keyid-format long "$passfile" 2>&1 | sed -nE 's/^gpg: public key is ([A-F0-9]+)$/\1/p' | LC_ALL=C sort -u)"
 
 		if [[ $gpg_keys != "$current_keys" ]]; then
 			echo "$passfile_display: reencrypting to ${gpg_keys//$'\n'/ }"
@@ -235,7 +235,7 @@ tmpdir() {
 		)"
 		SECURE_TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/$template")"
 		shred_tmpfile() {
-			find "$SECURE_TMPDIR" -type f -exec $SHRED {} +
+			find "$SECURE_TMPDIR" -type f -exec "$SHRED" {} +
 			rm -rf "$SECURE_TMPDIR"
 		}
 		trap shred_tmpfile EXIT
@@ -388,7 +388,7 @@ cmd_show() {
 			echo "$pass" | $BASE64 -d
 		else
 			[[ $selected_line =~ ^[0-9]+$ ]] || die "Clip location '$selected_line' is not a number."
-			pass="$($GPG -d "${GPG_OPTS[@]}" "$passfile" | tail -n +${selected_line} | head -n 1)" || exit $?
+			pass="$($GPG -d "${GPG_OPTS[@]}" "$passfile" | tail -n +"${selected_line}" | head -n 1)" || exit $?
 			[[ -n $pass ]] || die "There is no password to put on the clipboard at line ${selected_line}."
 			if [[ $clip -eq 1 ]]; then
 				clip "$pass" "$path"
@@ -428,7 +428,7 @@ cmd_grep() {
 		local passfile_dir="${passfile%/*}/"
 		[[ $passfile_dir == "${passfile}/" ]] && passfile_dir=""
 		passfile="${passfile##*/}"
-		printf "\e[94m%s\e[1m%s\e[0m:\n" "$passfile_dir" "$passfile"
+		printf "\e[94m%s\e[1m"%s\e[0m":\n" "$passfile_dir" "$passfile"
 		echo "$grepresults"
 	done < <(find -L "$PREFIX" -path '*/.git' -prune -o -path '*/.extensions' -prune -o -iname '*.gpg' -print0)
 }
